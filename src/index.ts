@@ -4,37 +4,18 @@ import { google } from 'googleapis'
 import { z } from 'zod'
 import { ERROR_MESSAGES, OAUTH21_CONFIG, SERVER_CONFIG } from './constants.js'
 import { registerAuthTools } from './tools/auth.js'
-import { registerConsolidatedCalendarTools } from './tools/calendars-consolidated.js'
-import { registerConsolidatedEventTools } from './tools/events-consolidated.js'
+import { registerConsolidatedCalendarTools } from './tools/calendars.js'
+import { registerConsolidatedEventTools } from './tools/events.js'
+import { GoogleCalendarOAuthProvider } from './oauth-provider.js'
 
 // Check if OAuth 2.1 is enabled at build time
 const isOAuth21Enabled = process.env.OAUTH21_ENABLED === 'true'
 
-export const configSchema = isOAuth21Enabled
-	? z.object({
-		clientId: z
-			.string()
-			.optional()
-			.describe('Google OAuth2 Client ID (not needed with OAuth 2.1)'),
-		clientSecret: z
-			.string()
-			.optional()
-			.describe('Google OAuth2 Client Secret (not needed with OAuth 2.1)'),
-		redirectUri: z
-			.string()
-			.optional()
-			.describe('OAuth2 redirect URI (not needed with OAuth 2.1)'),
-		refreshToken: z.string().optional().describe('Optional: Pre-existing refresh token'),
-	})
-	: z.object({
-		clientId: z.string().describe('Google OAuth2 Client ID from Google Cloud Console'),
-		clientSecret: z.string().describe('Google OAuth2 Client Secret from Google Cloud Console'),
-		redirectUri: z
-			.string()
-			.default('http://localhost:8082/oauth2callback')
-			.describe('OAuth2 redirect URI'),
-		refreshToken: z.string().optional().describe('Optional: Pre-existing refresh token'),
-	})
+export const configSchema = z.object({
+	// OAuth is now handled automatically by Smithery's OAuth provider
+	// No configuration needed for OAuth 2.1 integration
+	refreshToken: z.string().optional().describe('Optional: Pre-existing refresh token for Google Calendar access'),
+})
 
 // OAuth 2.1 Integration
 const oauth21Config = isOAuth21Enabled
@@ -45,7 +26,7 @@ const oauth21Config = isOAuth21Enabled
 	}
 	: null
 
-export default function ({ config }: { config: z.infer<typeof configSchema> }) {
+export default function ({ config, auth }: { config: z.infer<typeof configSchema>, auth?: any }) {
 	try {
 		console.log(`Starting ${SERVER_CONFIG.NAME}...`)
 
@@ -63,34 +44,28 @@ export default function ({ config }: { config: z.infer<typeof configSchema> }) {
 			version: SERVER_CONFIG.VERSION,
 		})
 
-		// Initialize OAuth2 client (or OAuth 2.1 proxy)
+		// Initialize OAuth2 client
+		// With Smithery OAuth provider, we get auth info from the auth parameter
 		let oauth2Client
-		if (isOAuth21Enabled && oauth21Config) {
-			// Use OAuth 2.1 with real Google credentials for API calls
-			// The auth server will handle the OAuth 2.1 flow
-			oauth2Client = new google.auth.OAuth2(
-				process.env.GOOGLE_CLIENT_ID || config.clientId || 'placeholder',
-				process.env.GOOGLE_CLIENT_SECRET || config.clientSecret || 'placeholder',
-				oauth21Config.authServerUrl + OAUTH21_CONFIG.DEFAULT_CALLBACK_URI
-			)
-			console.log('Using OAuth 2.1 with Google credentials')
-		} else if (config.clientId && config.clientSecret) {
-			// Use legacy Google OAuth
-			oauth2Client = new google.auth.OAuth2(
-				config.clientId,
-				config.clientSecret,
-				config.redirectUri
-			)
-			console.log('Using Legacy Google OAuth')
-		} else {
-			throw new Error(ERROR_MESSAGES.AUTHENTICATION.MISSING_CREDENTIALS)
-		}
-
-		// Set refresh token if provided
-		if (config.refreshToken) {
+		if (auth && auth.token) {
+			// Use the token from Smithery's OAuth provider
+			oauth2Client = new google.auth.OAuth2()
+			oauth2Client.setCredentials({
+				access_token: auth.token,
+				refresh_token: config.refreshToken,
+			})
+			console.log('Using Smithery OAuth provider with authenticated token')
+		} else if (config.refreshToken) {
+			// Fallback to refresh token if provided
+			oauth2Client = new google.auth.OAuth2()
 			oauth2Client.setCredentials({
 				refresh_token: config.refreshToken,
 			})
+			console.log('Using refresh token authentication')
+		} else {
+			// No authentication available - server will need OAuth flow
+			oauth2Client = new google.auth.OAuth2()
+			console.log('OAuth authentication required - will be handled by Smithery OAuth provider')
 		}
 
 		// Initialize Google Calendar API client
@@ -115,3 +90,6 @@ export default function ({ config }: { config: z.infer<typeof configSchema> }) {
 		throw e
 	}
 }
+
+// Export OAuth provider for Smithery integration
+export const oauth = new GoogleCalendarOAuthProvider()

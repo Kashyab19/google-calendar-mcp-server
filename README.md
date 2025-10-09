@@ -310,11 +310,11 @@ The MCP server provides detailed error messages for common issues:
 ```
 google-calendar-mcp/
 ├── src/
-│   ├── index.ts           # Main MCP server entry point
+│   ├── index.ts                    # Main MCP server entry point
 │   └── tools/
-│       ├── auth.ts        # Authentication tools
-│       ├── calendars.ts   # Calendar management tools
-│       └── events.ts      # Event management tools
+│       ├── auth.ts                 # Authentication tools
+│       ├── calendars-consolidated.ts # Consolidated calendar management tools
+│       └── events-consolidated.ts  # Consolidated event management tools
 ├── package.json
 ├── smithery.yaml
 └── README.md
