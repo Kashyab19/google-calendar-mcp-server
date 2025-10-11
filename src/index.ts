@@ -1,42 +1,36 @@
 #!/usr/bin/env node
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { google } from 'googleapis'
+import { google, type Auth } from 'googleapis'
 import { z } from 'zod'
-import { ERROR_MESSAGES, OAUTH21_CONFIG, SERVER_CONFIG } from './constants.js'
+import { isAuthenticated } from './auth-utils.js'
+import { SERVER_CONFIG } from './constants.js'
 import { registerAuthTools } from './tools/auth.js'
 import { registerConsolidatedCalendarTools } from './tools/calendars.js'
 import { registerConsolidatedEventTools } from './tools/events.js'
 import { GoogleCalendarOAuthProvider } from './oauth-provider.js'
-
-// Check if OAuth 2.1 is enabled at build time
-const isOAuth21Enabled = process.env.OAUTH21_ENABLED === 'true'
+import type { OAuthProvider } from '@smithery/sdk'
 
 export const configSchema = z.object({
-	// OAuth is now handled automatically by Smithery's OAuth provider
-	// No configuration needed for OAuth 2.1 integration
-	refreshToken: z.string().optional().describe('Optional: Pre-existing refresh token for Google Calendar access'),
+	refreshToken: z
+		.string()
+		.optional()
+		.describe('Optional: Pre-existing refresh token for Google Calendar access'),
 })
 
-// OAuth 2.1 Integration
-const oauth21Config = isOAuth21Enabled
-	? {
-		authServerUrl: process.env.OAUTH21_AUTH_SERVER_URL || OAUTH21_CONFIG.DEFAULT_AUTH_SERVER_URL,
-		resourceId: process.env.OAUTH21_RESOURCE_ID || OAUTH21_CONFIG.DEFAULT_RESOURCE_ID,
-		autoAuth: process.env.OAUTH21_AUTO_AUTH === 'true',
-	}
-	: null
-
-export default function ({ config, auth }: { config: z.infer<typeof configSchema>, auth?: any }) {
+export default function createServer({
+	config,
+	auth,
+}: {
+	config: z.infer<typeof configSchema>
+	auth?: AuthInfo
+}) {
 	try {
-		console.log(`Starting ${SERVER_CONFIG.NAME}...`)
+		console.log(`[SERVER DEBUG] Starting ${SERVER_CONFIG.NAME}...`)
 
-		// Check for OAuth 2.1 integration
-		if (isOAuth21Enabled && oauth21Config) {
-			console.log('OAuth 2.1 Integration Detected!')
-			console.log(`   Auth Server: ${oauth21Config.authServerUrl}`)
-			console.log(`   Resource ID: ${oauth21Config.resourceId}`)
-			console.log(`   Auto Auth: ${oauth21Config.autoAuth}`)
-		}
+		console.log(`[SERVER DEBUG] OAuth configuration:`)
+		console.log(`   Provider Type: GoogleCalendarOAuthProvider (OAuth 2.1 + PKCE)`)
+		console.log(`   Using Google OAuth with PKCE for secure authentication`)
 
 		// Create a new MCP server
 		const server = new McpServer({
@@ -44,28 +38,54 @@ export default function ({ config, auth }: { config: z.infer<typeof configSchema
 			version: SERVER_CONFIG.VERSION,
 		})
 
-		// Initialize OAuth2 client
-		// With Smithery OAuth provider, we get auth info from the auth parameter
-		let oauth2Client
-		if (auth && auth.token) {
-			// Use the token from Smithery's OAuth provider
+		// OAuth is enabled with GoogleCalendarOAuthProvider
+		console.log('[SERVER DEBUG] Using GoogleCalendarOAuthProvider for authentication')
+
+		// Initialize OAuth2 client with auth info from Smithery
+		console.log(`[SERVER DEBUG] Auth parameter received:`, auth ? 'PRESENT' : 'NULL')
+		if (auth) {
+			console.log(`   Token: ${auth.token ? 'PRESENT' : 'MISSING'}`)
+			console.log(`   Client ID: ${auth.clientId}`)
+			console.log(`   Expires At: ${auth.expiresAt || 'MISSING'}`)
+			console.log(`   Scopes: ${auth.scopes ? auth.scopes.join(', ') : 'MISSING'}`)
+
+			// Check if this is a guest/anonymous user
+			if (!isAuthenticated(auth)) {
+				console.log('[SERVER DEBUG] Guest/anonymous user detected')
+				console.log('[SERVER DEBUG] Tools will require authentication when called')
+			}
+		}
+
+		let oauth2Client: Auth.OAuth2Client
+		if (auth?.token && isAuthenticated(auth)) {
+			// Use the token from Smithery's OAuth provider (real authenticated user)
 			oauth2Client = new google.auth.OAuth2()
 			oauth2Client.setCredentials({
 				access_token: auth.token,
-				refresh_token: config.refreshToken,
+				refresh_token: config.refreshToken, // Fallback if available
+				token_type: 'Bearer',
+				expiry_date: auth.expiresAt ? auth.expiresAt * 1000 : undefined,
 			})
-			console.log('Using Smithery OAuth provider with authenticated token')
+			console.log('[SERVER DEBUG] Using OAuth 2.1 authentication via Smithery')
+			console.log(
+				`   Token expires at: ${auth.expiresAt ? new Date(auth.expiresAt * 1000).toISOString() : 'unknown'}`
+			)
+			console.log(`   Scopes: ${auth.scopes.join(', ')}`)
 		} else if (config.refreshToken) {
 			// Fallback to refresh token if provided
 			oauth2Client = new google.auth.OAuth2()
 			oauth2Client.setCredentials({
 				refresh_token: config.refreshToken,
 			})
-			console.log('Using refresh token authentication')
+			console.log('[SERVER DEBUG] Using refresh token authentication (fallback)')
 		} else {
-			// No authentication available - server will need OAuth flow
+			// No authentication - will need to use refresh token from config
 			oauth2Client = new google.auth.OAuth2()
-			console.log('OAuth authentication required - will be handled by Smithery OAuth provider')
+			console.warn('[SERVER DEBUG] WARNING: No OAuth credentials available')
+			console.warn('[SERVER DEBUG] Tools will fail unless you provide a refreshToken in config')
+			console.warn(
+				'[SERVER DEBUG] Get a refresh token from: https://developers.google.com/oauthplayground'
+			)
 		}
 
 		// Initialize Google Calendar API client
@@ -91,5 +111,10 @@ export default function ({ config, auth }: { config: z.infer<typeof configSchema
 	}
 }
 
-// Export OAuth provider for Smithery integration
-export const oauth = new GoogleCalendarOAuthProvider()
+// OAuth DISABLED - Reaching out to Smithery developers about infinite loop issue
+// The Smithery SDK's requireBearerAuth middleware blocks initial MCP connections
+// causing infinite loops during playground registration/initialization
+console.log('[SERVER DEBUG] OAuth is DISABLED - contacting Smithery developers')
+console.log('[SERVER DEBUG] Issue: requireBearerAuth blocks MCP initialize method')
+console.log('[SERVER DEBUG] To re-enable: uncomment the oauth export below')
+// export const oauth: OAuthProvider = new GoogleCalendarOAuthProvider()

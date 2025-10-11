@@ -12,8 +12,8 @@ dotenv.config()
 
 const app = express()
 const PORT = process.env.AUTH_SERVER_PORT || 3080
-const ISSUER = process.env.AUTH_SERVER_ISSUER || `http://localhost:${PORT}`
-const MCP_RESOURCE_ID = process.env.MCP_RESOURCE_ID || 'http://localhost:3002'
+const ISSUER = process.env.AUTH_SERVER_ISSUER || `http://localhost:3080`
+const MCP_RESOURCE_ID = process.env.MCP_RESOURCE_ID || 'https://smithery.ai'
 
 // Initialize services
 const cryptoService = new CryptoService()
@@ -21,8 +21,11 @@ const storage = new InMemoryStorage()
 const googleAuth = new GoogleAuthService(
 	process.env.GOOGLE_CLIENT_ID!,
 	process.env.GOOGLE_CLIENT_SECRET!,
-	'http://localhost:3080/oauth/google/callback'
+	process.env.GOOGLE_REDIRECT_URI || `${ISSUER}/oauth/google/callback`
 )
+
+// Trust proxy for rate limiting
+app.set('trust proxy', true)
 
 // Middleware
 app.use(helmet())
@@ -47,10 +50,8 @@ app.get('/.well-known/oauth-authorization-server', (_req, res) => {
 		jwks_uri: `${ISSUER}/.well-known/jwks.json`,
 		code_challenge_methods_supported: ['S256'],
 		scopes_supported: [
-			'calendar.read',
-			'calendar.write',
-			'calendar.events.read',
-			'calendar.events.write',
+			'https://www.googleapis.com/auth/calendar',
+			'https://www.googleapis.com/auth/calendar.events',
 		],
 		response_types_supported: ['code'],
 		grant_types_supported: ['authorization_code', 'refresh_token'],
@@ -86,7 +87,7 @@ app.post('/register', (req, res) => {
 			redirect_uris,
 			grant_types: grant_types || ['authorization_code', 'refresh_token'],
 			response_types: response_types || ['code'],
-			scope: 'calendar.read calendar.write calendar.events.read calendar.events.write',
+			scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
 		})
 
 		res.status(201).json({
@@ -125,7 +126,7 @@ app.get('/authorize', async (req, res) => {
 		} = req.query
 
 		// Validate required parameters
-		if (!client_id || !response_type || !redirect_uri || !state || !code_challenge || !resource) {
+		if (!client_id || !response_type || !redirect_uri || !code_challenge || !resource) {
 			return res.status(400).json({
 				error: 'invalid_request',
 				error_description: 'Missing required parameters',
@@ -148,21 +149,36 @@ app.get('/authorize', async (req, res) => {
 			})
 		}
 
-		// Validate resource parameter
-		if (resource !== MCP_RESOURCE_ID) {
+		// Validate resource parameter - accept any Smithery resource or localhost
+		const isValidResource = resource === MCP_RESOURCE_ID || 
+			(resource as string)?.includes('smithery.ai') || 
+			(resource as string)?.includes('localhost')
+		
+		if (!isValidResource) {
 			return res.status(400).json({
 				error: 'invalid_request',
-				error_description: `Invalid resource. Expected: ${MCP_RESOURCE_ID}`,
+				error_description: `Invalid resource. Expected: ${MCP_RESOURCE_ID} or Smithery resource`,
 			})
 		}
 
-		// Get client
-		const client = storage.getClient(client_id as string)
+		// Get client or create a default one for Smithery
+		let client = storage.getClient(client_id as string)
 		if (!client) {
-			return res.status(400).json({
-				error: 'invalid_client',
-				error_description: 'Invalid client_id',
-			})
+			// Create a default client for Smithery-generated client IDs
+			client = {
+				client_id: client_id as string,
+				client_name: 'Smithery MCP Client',
+				redirect_uris: [
+					'https://smithery.ai/playground/callback',
+					'http://localhost:3080/oauth/callback'
+				],
+				grant_types: ['authorization_code', 'refresh_token'],
+				response_types: ['code'],
+				scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events',
+				created_at: new Date()
+			}
+			// Store the client using the storage method
+			storage.storeClient(client)
 		}
 
 		// Validate redirect_uri
@@ -425,6 +441,48 @@ app.get('/google-tokens', async (req, res) => {
 })
 
 /**
+ * Token Verification Endpoint
+ */
+app.post('/verify', async (req, res) => {
+	try {
+		const authHeader = req.headers.authorization
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return res.status(401).json({
+				error: 'unauthorized',
+				error_description: 'Missing or invalid authorization header',
+			})
+		}
+
+		const jwtToken = authHeader.substring(7)
+
+		// Verify JWT token and return token info
+		try {
+			const decoded = await cryptoService.verifyJWT(jwtToken)
+			
+			res.json({
+				client_id: decoded.client_id,
+				scope: decoded.scope,
+				exp: decoded.exp,
+				iat: decoded.iat,
+				sub: decoded.sub,
+				aud: decoded.aud,
+			})
+		} catch (_jwtError) {
+			return res.status(401).json({
+				error: 'invalid_token',
+				error_description: 'Invalid JWT token',
+			})
+		}
+	} catch (error) {
+		console.error('Token verification error:', error)
+		res.status(500).json({
+			error: 'server_error',
+			error_description: 'Internal server error',
+		})
+	}
+})
+
+/**
  * Token Endpoint
  */
 app.post('/token', async (req, res) => {
@@ -432,11 +490,15 @@ app.post('/token', async (req, res) => {
 		const { grant_type, code, redirect_uri, client_id, code_verifier, refresh_token, resource } =
 			req.body
 
-		// Validate resource parameter
-		if (resource !== MCP_RESOURCE_ID) {
+		// Validate resource parameter - accept any Smithery resource or localhost
+		const isValidResource = resource === MCP_RESOURCE_ID || 
+			(resource as string)?.includes('smithery.ai') || 
+			(resource as string)?.includes('localhost')
+		
+		if (!isValidResource) {
 			return res.status(400).json({
 				error: 'invalid_request',
-				error_description: `Invalid resource. Expected: ${MCP_RESOURCE_ID}`,
+				error_description: `Invalid resource. Expected: ${MCP_RESOURCE_ID} or Smithery resource`,
 			})
 		}
 

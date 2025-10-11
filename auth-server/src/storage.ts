@@ -38,6 +38,10 @@ export class InMemoryStorage {
 		return this.clients.get(client_id)
 	}
 
+	storeClient(client: ClientRegistration): void {
+		this.clients.set(client.client_id, client)
+	}
+
 	// Authorization Requests
 	storeAuthorizationRequest(googleState: string, request: AuthorizationRequest): void {
 		const expires_at = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes

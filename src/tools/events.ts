@@ -65,26 +65,37 @@ When creating events, use the ISO format:
 			end_time: z.string().optional().describe('End time (RFC3339 format)'),
 
 			// Relative event creation
-			start_offset_minutes: z.number().optional().describe('Minutes from now to start (0 = start now)'),
+			start_offset_minutes: z
+				.number()
+				.optional()
+				.describe('Minutes from now to start (0 = start now)'),
 			duration_minutes: z.number().optional().describe('Duration in minutes (for relative events)'),
 
 			// Multiple events creation
-			events: z.array(z.object({
-				summary: z.string(),
-				start_time: z.string(),
-				end_time: z.string(),
-				description: z.string().optional(),
-				location: z.string().optional(),
-				attendees: z.array(z.string()).optional()
-			})).optional().describe('Array of events to create (for batch creation)'),
+			events: z
+				.array(
+					z.object({
+						summary: z.string(),
+						start_time: z.string(),
+						end_time: z.string(),
+						description: z.string().optional(),
+						location: z.string().optional(),
+						attendees: z.array(z.string()).optional(),
+					})
+				)
+				.optional()
+				.describe('Array of events to create (for batch creation)'),
 
 			// Recurring events
-			recurrence: z.array(z.string()).optional().describe('RRULE patterns for recurring events (e.g., ["FREQ=WEEKLY;BYDAY=MO,WE,FR"])'),
+			recurrence: z
+				.array(z.string())
+				.optional()
+				.describe('RRULE patterns for recurring events (e.g., ["FREQ=WEEKLY;BYDAY=MO,WE,FR"])'),
 
 			// Common fields
 			location: z.string().optional().describe('Event location'),
 			attendees: z.array(z.string()).optional().describe('List of attendee email addresses'),
-			all_day: z.boolean().default(false).describe('Whether this is an all-day event')
+			all_day: z.boolean().default(false).describe('Whether this is an all-day event'),
 		},
 		async (params) => {
 			return safeAsyncOperation(async () => {
@@ -100,7 +111,7 @@ When creating events, use the ISO format:
 					recurrence,
 					location,
 					attendees,
-					all_day
+					all_day,
 				} = params
 
 				const currentCalendar = getCalendar()
@@ -114,16 +125,16 @@ When creating events, use the ISO format:
 							description: eventData.description,
 							location: eventData.location,
 							start: { dateTime: eventData.start_time },
-							end: { dateTime: eventData.end_time }
+							end: { dateTime: eventData.end_time },
 						}
 
 						if (eventData.attendees && eventData.attendees.length > 0) {
-							event.attendees = eventData.attendees.map(email => ({ email }))
+							event.attendees = eventData.attendees.map((email) => ({ email }))
 						}
 
 						const response = await currentCalendar.events.insert({
 							calendarId: calendar_id,
-							requestBody: event
+							requestBody: event,
 						})
 
 						results.push(response.data)
@@ -133,14 +144,18 @@ When creating events, use the ISO format:
 
 Created ${results.length} events:
 
-${results.map((event, index) => `
+${results
+	.map(
+		(event, index) => `
 ## Event ${index + 1}: ${event.summary}
 - **ID:** \`${event.id}\`
 - **Start:** ${event.start?.dateTime || 'Not specified'}
 - **End:** ${event.end?.dateTime || 'Not specified'}
 - **Location:** ${event.location || 'Not specified'}
 - **HTML Link:** ${event.htmlLink || 'Not available'}
-`).join('')}
+`
+	)
+	.join('')}
 
 **Total:** ${results.length} events created`
 
@@ -157,7 +172,7 @@ ${results.map((event, index) => `
 				const event: calendar_v3.Schema$Event = {
 					summary,
 					description,
-					location
+					location,
 				}
 
 				// Handle time settings
@@ -186,7 +201,7 @@ ${results.map((event, index) => `
 
 				// Handle attendees
 				if (attendees && attendees.length > 0) {
-					event.attendees = attendees.map(email => ({ email }))
+					event.attendees = attendees.map((email) => ({ email }))
 				}
 
 				// Handle recurrence
@@ -196,7 +211,7 @@ ${results.map((event, index) => `
 
 				const response = await currentCalendar.events.insert({
 					calendarId: calendar_id,
-					requestBody: event
+					requestBody: event,
 				})
 
 				const createdEvent = response.data
@@ -211,11 +226,15 @@ ${results.map((event, index) => `
 - **Status:** ${createdEvent.status || 'Unknown'}
 - **HTML Link:** ${createdEvent.htmlLink || 'Not available'}
 
-${recurrence && recurrence.length > 0 ? `
+${
+	recurrence && recurrence.length > 0
+		? `
 ## Recurrence
 - **Pattern:** ${recurrence.join(', ')}
 - **Type:** Recurring event
-` : ''}
+`
+		: ''
+}
 
 ## Next Steps
 - The event has been added to your calendar
@@ -238,11 +257,25 @@ ${recurrence && recurrence.length > 0 ? `
 			time_min: z.string().optional().describe('Lower bound for event start time (RFC3339 format)'),
 			time_max: z.string().optional().describe('Upper bound for event start time (RFC3339 format)'),
 			max_results: z.number().default(10).describe('Maximum number of events to return'),
-			order_by: z.enum(['startTime', 'updated']).default('startTime').describe('Order of events returned'),
-			search_text: z.string().optional().describe('Search text to filter events by name or description'),
-			include_recurring: z.boolean().default(true).describe('Whether to include recurring events')
+			order_by: z
+				.enum(['startTime', 'updated'])
+				.default('startTime')
+				.describe('Order of events returned'),
+			search_text: z
+				.string()
+				.optional()
+				.describe('Search text to filter events by name or description'),
+			include_recurring: z.boolean().default(true).describe('Whether to include recurring events'),
 		},
-		async ({ calendar_id, time_min, time_max, max_results, order_by, search_text, include_recurring }) => {
+		async ({
+			calendar_id,
+			time_min,
+			time_max,
+			max_results,
+			order_by,
+			search_text,
+			include_recurring,
+		}) => {
 			return safeAsyncOperation(async () => {
 				const currentCalendar = getCalendar()
 
@@ -253,7 +286,7 @@ ${recurrence && recurrence.length > 0 ? `
 					maxResults: max_results,
 					singleEvents: include_recurring,
 					orderBy: order_by,
-					q: search_text
+					q: search_text,
 				})
 
 				const events = response.data.items || []
@@ -261,11 +294,12 @@ ${recurrence && recurrence.length > 0 ? `
 
 ${search_text ? `**Search:** "${search_text}"\n` : ''}
 
-${events.length === 0
-						? 'No events found for the specified criteria.'
-						: events
-							.map(
-								(event) => `
+${
+	events.length === 0
+		? 'No events found for the specified criteria.'
+		: events
+				.map(
+					(event) => `
 ## ${event.summary || 'Untitled Event'}
 - **ID:** \`${event.id}\`
 - **Start:** ${event.start?.dateTime || event.start?.date || 'Not specified'}
@@ -274,18 +308,20 @@ ${events.length === 0
 - **Description:** ${event.description || 'No description'}
 - **Status:** ${event.status || 'Unknown'}
 - **HTML Link:** ${event.htmlLink || 'Not available'}
-${event.attendees
-										? `- **Attendees:** ${event.attendees.map((a) => a.email || a.displayName || 'Unknown').join(', ')}`
-										: ''
-									}
-${event.recurrence
-										? `- **Recurring:** Yes (${event.recurrence.length} rule${event.recurrence.length !== 1 ? 's' : ''})`
-										: ''
-									}
+${
+	event.attendees
+		? `- **Attendees:** ${event.attendees.map((a) => a.email || a.displayName || 'Unknown').join(', ')}`
+		: ''
+}
+${
+	event.recurrence
+		? `- **Recurring:** Yes (${event.recurrence.length} rule${event.recurrence.length !== 1 ? 's' : ''})`
+		: ''
+}
 `
-							)
-							.join('\n')
-					}
+				)
+				.join('\n')
+}
 
 **Total:** ${events.length} event${events.length !== 1 ? 's' : ''}`
 
@@ -306,26 +342,43 @@ ${event.recurrence
 			// Event identification (choose one method)
 			event_id: z.string().optional().describe('Direct event ID (fastest method)'),
 			event_name: z.string().optional().describe('Event name or partial name to search for'),
-			start_date: z.string().optional().describe('Event start date (YYYY-MM-DD) to help identify the correct event'),
-			start_time: z.string().optional().describe('Event start time (HH:MM format) to help identify the correct event'),
+			start_date: z
+				.string()
+				.optional()
+				.describe('Event start date (YYYY-MM-DD) to help identify the correct event'),
+			start_time: z
+				.string()
+				.optional()
+				.describe('Event start time (HH:MM format) to help identify the correct event'),
 			location: z.string().optional().describe('Event location to help identify the correct event'),
 
 			// Update operations
-			updates: z.object({
-				summary: z.string().optional(),
-				description: z.string().optional(),
-				start_time: z.string().optional(),
-				end_time: z.string().optional(),
-				location: z.string().optional(),
-				attendees: z.array(z.string()).optional()
-			}).optional().describe('Fields to update'),
+			updates: z
+				.object({
+					summary: z.string().optional(),
+					description: z.string().optional(),
+					start_time: z.string().optional(),
+					end_time: z.string().optional(),
+					location: z.string().optional(),
+					attendees: z.array(z.string()).optional(),
+				})
+				.optional()
+				.describe('Fields to update'),
 
 			// Delete operations
 			delete: z.boolean().default(false).describe('Set to true to delete the event'),
-			force_delete: z.boolean().default(false).describe('Skip confirmation for single matches (use with caution)'),
+			force_delete: z
+				.boolean()
+				.default(false)
+				.describe('Skip confirmation for single matches (use with caution)'),
 
 			// Recurring event handling
-			delete_recurring: z.enum(['this', 'following', 'all']).optional().describe('For recurring events: delete this instance, following instances, or all instances')
+			delete_recurring: z
+				.enum(['this', 'following', 'all'])
+				.optional()
+				.describe(
+					'For recurring events: delete this instance, following instances, or all instances'
+				),
 		},
 		async (params) => {
 			return safeAsyncOperation(async () => {
@@ -339,7 +392,7 @@ ${event.recurrence
 					updates,
 					delete: shouldDelete,
 					force_delete,
-					delete_recurring
+					delete_recurring,
 				} = params
 
 				const currentCalendar = getCalendar()
@@ -350,22 +403,26 @@ ${event.recurrence
 						// Direct delete by ID
 						await currentCalendar.events.delete({
 							calendarId: calendar_id,
-							eventId: event_id
+							eventId: event_id,
 						})
 
 						return {
-							content: [{
-								type: 'text', text: `# Event Deleted Successfully
+							content: [
+								{
+									type: 'text',
+									text: `# Event Deleted Successfully
 
 Event with ID \`${event_id}\` has been permanently deleted.
 
-**WARNING:** This action cannot be undone.` }],
+**WARNING:** This action cannot be undone.`,
+								},
+							],
 						}
 					} else if (updates) {
 						// Direct update by ID
 						const existingEvent = await currentCalendar.events.get({
 							calendarId: calendar_id,
-							eventId: event_id
+							eventId: event_id,
 						})
 
 						const eventData = { ...existingEvent.data }
@@ -385,19 +442,21 @@ Event with ID \`${event_id}\` has been permanently deleted.
 								: { dateTime: updates.end_time }
 						}
 						if (updates.attendees !== undefined) {
-							eventData.attendees = updates.attendees.map(email => ({ email }))
+							eventData.attendees = updates.attendees.map((email) => ({ email }))
 						}
 
 						const response = await currentCalendar.events.update({
 							calendarId: calendar_id,
 							eventId: event_id,
-							requestBody: eventData
+							requestBody: eventData,
 						})
 
 						const updatedEvent = response.data
 						return {
-							content: [{
-								type: 'text', text: `# Event Updated Successfully
+							content: [
+								{
+									type: 'text',
+									text: `# Event Updated Successfully
 
 ## ${updatedEvent.summary}
 - **ID:** \`${updatedEvent.id}\`
@@ -410,13 +469,15 @@ Event with ID \`${event_id}\` has been permanently deleted.
 
 ## Changes Applied
 - Event details have been updated
-- Attendees will receive updated invitations (if changed)` }],
+- Attendees will receive updated invitations (if changed)`,
+								},
+							],
 						}
 					} else {
 						// Just get event details
 						const response = await currentCalendar.events.get({
 							calendarId: calendar_id,
-							eventId: event_id
+							eventId: event_id,
 						})
 
 						const event = response.data
@@ -434,30 +495,32 @@ Event with ID \`${event_id}\` has been permanently deleted.
 - **HTML Link:** ${event.htmlLink || 'Not available'}
 
 ## Attendees
-${event.attendees?.length
-								? event.attendees
-									.map(
-										(attendee) => `
+${
+	event.attendees?.length
+		? event.attendees
+				.map(
+					(attendee) => `
 - **${attendee.displayName || attendee.email || 'Unknown'}** (${attendee.email || 'No email'})
   - Response: ${attendee.responseStatus || 'No response'}
   - Optional: ${attendee.optional ? 'Yes' : 'No'}
 `
-									)
-									.join('')
-								: 'No attendees'
-							}
+				)
+				.join('')
+		: 'No attendees'
+}
 
 ## Reminders
-${event.reminders?.overrides?.length
-								? event.reminders.overrides
-									.map(
-										(reminder) => `
+${
+	event.reminders?.overrides?.length
+		? event.reminders.overrides
+				.map(
+					(reminder) => `
 - **${reminder.method}:** ${reminder.minutes} minutes before
 `
-									)
-									.join('')
-								: 'No custom reminders'
-							}`
+				)
+				.join('')
+		: 'No custom reminders'
+}`
 
 						return {
 							content: [{ type: 'text', text: markdown }],
@@ -476,7 +539,7 @@ ${event.reminders?.overrides?.length
 					timeMin: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year ago
 					timeMax: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year from now
 					singleEvents: true,
-					orderBy: 'startTime'
+					orderBy: 'startTime',
 				})
 
 				const events = response.data.items || []
@@ -509,18 +572,23 @@ ${event.reminders?.overrides?.length
 
 				if (matchingEvents.length === 0) {
 					return {
-						content: [{
-							type: 'text', text: `# No Events Found
+						content: [
+							{
+								type: 'text',
+								text: `# No Events Found
 
 No events found matching your criteria:
 - **Name:** "${event_name}"
-${start_date ? `- **Date:** ${start_date}\n` : ''}${start_time ? `- **Time:** ${start_time}\n` : ''}${location ? `- **Location:** ${location}\n` : ''
-								}
+${start_date ? `- **Date:** ${start_date}\n` : ''}${start_time ? `- **Time:** ${start_time}\n` : ''}${
+	location ? `- **Location:** ${location}\n` : ''
+}
 
 ## Suggestions:
 1. Try using a partial name match
 2. Use \`list_events\` with search_text to find similar events
-3. Check if you're looking in the correct calendar` }],
+3. Check if you're looking in the correct calendar`,
+							},
+						],
 					}
 				}
 
@@ -530,8 +598,8 @@ ${start_date ? `- **Date:** ${start_date}\n` : ''}${start_time ? `- **Time:** ${
 Found ${matchingEvents.length} events matching your criteria:
 
 ${matchingEvents
-							.map(
-								(event, index) => `
+	.map(
+		(event, index) => `
 ## Option ${index + 1}: ${event.summary}
 - **ID:** \`${event.id}\`
 - **Start:** ${event.start?.dateTime || event.start?.date || 'Not specified'}
@@ -539,8 +607,8 @@ ${matchingEvents
 - **Location:** ${event.location || 'Not specified'}
 - **Description:** ${event.description || 'No description'}
 `
-							)
-							.join('\n')}
+	)
+	.join('\n')}
 
 ## To Delete a Specific Event:
 1. **Add more details** to narrow down the search:
@@ -574,12 +642,14 @@ delete: true
 
 					await currentCalendar.events.delete({
 						calendarId: calendar_id,
-						eventId: targetEvent.id
+						eventId: targetEvent.id,
 					})
 
 					return {
-						content: [{
-							type: 'text', text: `# Event Deleted Successfully
+						content: [
+							{
+								type: 'text',
+								text: `# Event Deleted Successfully
 
 ## Deleted Event Details:
 - **Title:** ${targetEvent.summary || 'Untitled Event'}
@@ -588,7 +658,9 @@ delete: true
 - **End:** ${targetEvent.end?.dateTime || targetEvent.end?.date || 'Not specified'}
 - **Location:** ${targetEvent.location || 'Not specified'}
 
-**WARNING:** This action cannot be undone. The event has been removed from all attendees' calendars.` }],
+**WARNING:** This action cannot be undone. The event has been removed from all attendees' calendars.`,
+							},
+						],
 					}
 				} else if (updates) {
 					if (!targetEvent.id) {
@@ -597,7 +669,7 @@ delete: true
 
 					const existingEvent = await currentCalendar.events.get({
 						calendarId: calendar_id,
-						eventId: targetEvent.id
+						eventId: targetEvent.id,
 					})
 
 					const eventData = { ...existingEvent.data }
@@ -617,19 +689,21 @@ delete: true
 							: { dateTime: updates.end_time }
 					}
 					if (updates.attendees !== undefined) {
-						eventData.attendees = updates.attendees.map(email => ({ email }))
+						eventData.attendees = updates.attendees.map((email) => ({ email }))
 					}
 
 					const response = await currentCalendar.events.update({
 						calendarId: calendar_id,
 						eventId: targetEvent.id,
-						requestBody: eventData
+						requestBody: eventData,
 					})
 
 					const updatedEvent = response.data
 					return {
-						content: [{
-							type: 'text', text: `# Event Updated Successfully
+						content: [
+							{
+								type: 'text',
+								text: `# Event Updated Successfully
 
 ## ${updatedEvent.summary}
 - **ID:** \`${updatedEvent.id}\`
@@ -642,7 +716,9 @@ delete: true
 
 ## Changes Applied
 - Event details have been updated
-- Attendees will receive updated invitations (if changed)` }],
+- Attendees will receive updated invitations (if changed)`,
+							},
+						],
 					}
 				} else {
 					// Just show event details

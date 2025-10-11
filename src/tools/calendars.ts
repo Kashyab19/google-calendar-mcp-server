@@ -54,26 +54,38 @@ ${
 		'Create, get details, update, or delete calendars',
 		{
 			// Calendar identification
-			calendar_id: z.string().optional().describe("Calendar ID (use 'primary' for the user's primary calendar)"),
-			calendar_name: z.string().optional().describe('Calendar name to search for (for operations on existing calendars)'),
-			
+			calendar_id: z
+				.string()
+				.optional()
+				.describe("Calendar ID (use 'primary' for the user's primary calendar)"),
+			calendar_name: z
+				.string()
+				.optional()
+				.describe('Calendar name to search for (for operations on existing calendars)'),
+
 			// Create operation
 			create: z.boolean().default(false).describe('Set to true to create a new calendar'),
 			summary: z.string().optional().describe('Calendar title/name (required for create)'),
 			description: z.string().optional().describe('Calendar description'),
 			time_zone: z.string().optional().describe("Time zone (e.g., 'America/New_York')"),
-			
+
 			// Update operation
 			update: z.boolean().default(false).describe('Set to true to update an existing calendar'),
-			updates: z.object({
-				summary: z.string().optional(),
-				description: z.string().optional(),
-				time_zone: z.string().optional()
-			}).optional().describe('Fields to update'),
-			
+			updates: z
+				.object({
+					summary: z.string().optional(),
+					description: z.string().optional(),
+					time_zone: z.string().optional(),
+				})
+				.optional()
+				.describe('Fields to update'),
+
 			// Delete operation
 			delete: z.boolean().default(false).describe('Set to true to delete a calendar'),
-			force_delete: z.boolean().default(false).describe('Skip confirmation for calendar deletion (use with caution)')
+			force_delete: z
+				.boolean()
+				.default(false)
+				.describe('Skip confirmation for calendar deletion (use with caution)'),
 		},
 		async (params) => {
 			return safeAsyncOperation(async () => {
@@ -87,7 +99,7 @@ ${
 					update,
 					updates,
 					delete: shouldDelete,
-					force_delete
+					force_delete,
 				} = params
 
 				const currentCalendar = getCalendar()
@@ -133,17 +145,22 @@ ${
 					if (!targetCalendarId && calendar_name) {
 						const listResponse = await currentCalendar.calendarList.list()
 						const calendars = listResponse.data.items || []
-						const matchingCalendars = calendars.filter(cal => 
+						const matchingCalendars = calendars.filter((cal) =>
 							cal.summary?.toLowerCase().includes(calendar_name.toLowerCase())
 						)
 
 						if (matchingCalendars.length === 0) {
 							return {
-								content: [{ type: 'text', text: `# No Calendar Found
+								content: [
+									{
+										type: 'text',
+										text: `# No Calendar Found
 
 No calendar found with name containing "${calendar_name}".
 
-Use \`list_calendars\` to see all available calendars.` }],
+Use \`list_calendars\` to see all available calendars.`,
+									},
+								],
 							}
 						}
 
@@ -233,7 +250,7 @@ delete: true
 					}
 
 					// Get existing calendar
-					const existingCalendar = await currentCalendar.calendarList.get({
+					const _existingCalendar = await currentCalendar.calendarList.get({
 						calendarId: calendar_id,
 					})
 
@@ -260,10 +277,10 @@ delete: true
 
 ## Changes Applied:
 ${updates.summary !== undefined ? `- **Name:** Updated to "${updates.summary}"\n` : ''}${
-	updates.description !== undefined ? `- **Description:** Updated to "${updates.description}"\n` : ''
-}${
-	updates.time_zone !== undefined ? `- **Time Zone:** Updated to "${updates.time_zone}"\n` : ''
-}
+	updates.description !== undefined
+		? `- **Description:** Updated to "${updates.description}"\n`
+		: ''
+}${updates.time_zone !== undefined ? `- **Time Zone:** Updated to "${updates.time_zone}"\n` : ''}
 
 ## Next Steps:
 - The calendar has been updated
@@ -282,17 +299,22 @@ ${updates.summary !== undefined ? `- **Name:** Updated to "${updates.summary}"\n
 				if (!targetCalendarId && calendar_name) {
 					const listResponse = await currentCalendar.calendarList.list()
 					const calendars = listResponse.data.items || []
-					const matchingCalendars = calendars.filter(cal => 
+					const matchingCalendars = calendars.filter((cal) =>
 						cal.summary?.toLowerCase().includes(calendar_name.toLowerCase())
 					)
 
 					if (matchingCalendars.length === 0) {
 						return {
-							content: [{ type: 'text', text: `# No Calendar Found
+							content: [
+								{
+									type: 'text',
+									text: `# No Calendar Found
 
 No calendar found with name containing "${calendar_name}".
 
-Use \`list_calendars\` to see all available calendars.` }],
+Use \`list_calendars\` to see all available calendars.`,
+								},
+							],
 						}
 					}
 
