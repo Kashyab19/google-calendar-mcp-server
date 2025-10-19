@@ -1,3 +1,4 @@
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Auth, calendar_v3 } from 'googleapis'
 import { z } from 'zod'
@@ -7,7 +8,8 @@ import { createCalendarClient, generateTimeExamples, getTimezoneInfo } from '../
 export function registerConsolidatedEventTools(
 	server: McpServer,
 	_calendar: calendar_v3.Calendar,
-	oauth2Client: Auth.OAuth2Client
+	oauth2Client: Auth.OAuth2Client,
+	_auth?: AuthInfo
 ) {
 	// Helper function to get a fresh calendar instance with current credentials
 	const getCalendar = () => createCalendarClient(oauth2Client)
@@ -99,6 +101,14 @@ When creating events, use the ISO format:
 		},
 		async (params) => {
 			return safeAsyncOperation(async () => {
+				// Check OAuth2Client credentials instead of MCP auth
+				const credentials = oauth2Client.credentials
+				if (!credentials.access_token && !credentials.refresh_token) {
+					throw new Error(
+						'Authentication required. Please use the `authenticate` tool to start the Google Calendar authentication process.'
+					)
+				}
+
 				const {
 					calendar_id,
 					summary,
@@ -392,7 +402,7 @@ ${
 					updates,
 					delete: shouldDelete,
 					force_delete,
-					delete_recurring,
+					delete_recurring: _delete_recurring,
 				} = params
 
 				const currentCalendar = getCalendar()

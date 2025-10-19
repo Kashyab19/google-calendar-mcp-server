@@ -1,3 +1,4 @@
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Auth, calendar_v3 } from 'googleapis'
 import { google } from 'googleapis'
@@ -7,7 +8,8 @@ import { safeAsyncOperation } from '../errors.js'
 export function registerConsolidatedCalendarTools(
 	server: McpServer,
 	_calendar: calendar_v3.Calendar,
-	oauth2Client: Auth.OAuth2Client
+	oauth2Client: Auth.OAuth2Client,
+	_auth?: AuthInfo
 ) {
 	// Helper function to get a fresh calendar instance with current credentials
 	const getCalendar = () => {
@@ -17,6 +19,14 @@ export function registerConsolidatedCalendarTools(
 	// Tool: List Calendars (keeping this as-is since it's already well-designed)
 	server.tool('list_calendars', 'List all calendars accessible to the user', {}, async () => {
 		return safeAsyncOperation(async () => {
+			// Check OAuth2Client credentials instead of MCP auth
+			const credentials = oauth2Client.credentials
+			if (!credentials.access_token && !credentials.refresh_token) {
+				throw new Error(
+					'Authentication required. Please use the `authenticate` tool to start the Google Calendar authentication process.'
+				)
+			}
+
 			const currentCalendar = getCalendar()
 			const response = await currentCalendar.calendarList.list()
 			const calendars = response.data.items || []
@@ -255,7 +265,7 @@ delete: true
 					})
 
 					// Prepare update data
-					const updateData: any = {}
+					const updateData: Record<string, unknown> = {}
 					if (updates.summary !== undefined) updateData.summary = updates.summary
 					if (updates.description !== undefined) updateData.description = updates.description
 					if (updates.time_zone !== undefined) updateData.timeZone = updates.time_zone

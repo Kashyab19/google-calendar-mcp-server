@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { google, type Auth } from 'googleapis'
+import { type Auth, google } from 'googleapis'
 import { z } from 'zod'
-import { isAuthenticated } from './auth-utils.js'
 import { SERVER_CONFIG } from './constants.js'
 import { registerAuthTools } from './tools/auth.js'
 import { registerConsolidatedCalendarTools } from './tools/calendars.js'
 import { registerConsolidatedEventTools } from './tools/events.js'
-import { GoogleCalendarOAuthProvider } from './oauth-provider.js'
-import type { OAuthProvider } from '@smithery/sdk'
 
 export const configSchema = z.object({
 	refreshToken: z
@@ -26,11 +23,7 @@ export default function createServer({
 	auth?: AuthInfo
 }) {
 	try {
-		console.log(`[SERVER DEBUG] Starting ${SERVER_CONFIG.NAME}...`)
-
-		console.log(`[SERVER DEBUG] OAuth configuration:`)
-		console.log(`   Provider Type: GoogleCalendarOAuthProvider (OAuth 2.1 + PKCE)`)
-		console.log(`   Using Google OAuth with PKCE for secure authentication`)
+		console.log(`Starting ${SERVER_CONFIG.NAME}...`)
 
 		// Create a new MCP server
 		const server = new McpServer({
@@ -48,16 +41,10 @@ export default function createServer({
 			console.log(`   Client ID: ${auth.clientId}`)
 			console.log(`   Expires At: ${auth.expiresAt || 'MISSING'}`)
 			console.log(`   Scopes: ${auth.scopes ? auth.scopes.join(', ') : 'MISSING'}`)
-
-			// Check if this is a guest/anonymous user
-			if (!isAuthenticated(auth)) {
-				console.log('[SERVER DEBUG] Guest/anonymous user detected')
-				console.log('[SERVER DEBUG] Tools will require authentication when called')
-			}
 		}
 
 		let oauth2Client: Auth.OAuth2Client
-		if (auth?.token && isAuthenticated(auth)) {
+		if (auth?.token) {
 			// Use the token from Smithery's OAuth provider (real authenticated user)
 			oauth2Client = new google.auth.OAuth2()
 			oauth2Client.setCredentials({
@@ -96,10 +83,10 @@ export default function createServer({
 		registerAuthTools(server, oauth2Client)
 		console.log('   Auth tools registered')
 
-		registerConsolidatedCalendarTools(server, calendar, oauth2Client)
+		registerConsolidatedCalendarTools(server, calendar, oauth2Client, auth)
 		console.log('   Calendar tools registered')
 
-		registerConsolidatedEventTools(server, calendar, oauth2Client)
+		registerConsolidatedEventTools(server, calendar, oauth2Client, auth)
 		console.log('   Event tools registered')
 
 		console.log('MCP Server ready!')
@@ -111,10 +98,6 @@ export default function createServer({
 	}
 }
 
-// OAuth DISABLED - Reaching out to Smithery developers about infinite loop issue
-// The Smithery SDK's requireBearerAuth middleware blocks initial MCP connections
-// causing infinite loops during playground registration/initialization
-console.log('[SERVER DEBUG] OAuth is DISABLED - contacting Smithery developers')
-console.log('[SERVER DEBUG] Issue: requireBearerAuth blocks MCP initialize method')
-console.log('[SERVER DEBUG] To re-enable: uncomment the oauth export below')
-// export const oauth: OAuthProvider = new GoogleCalendarOAuthProvider()
+// OAuth is handled at tool level only - no OAuth mount
+// This prevents the infinite loop issue and allows explicit authentication
+console.log('[SERVER DEBUG] OAuth disabled at mount level - authentication handled by tools only')

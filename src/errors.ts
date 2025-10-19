@@ -3,6 +3,7 @@
  */
 
 import { ERROR_MESSAGES, HTTP_STATUS } from './constants.js'
+import type { GoogleAPIError } from './types/api.js'
 
 /**
  * Base error class for the MCP server
@@ -114,7 +115,7 @@ export function createErrorResponse(
 /**
  * Handle common Google API errors
  */
-export function handleGoogleAPIError(error: any): MCPServerError {
+export function handleGoogleAPIError(error: GoogleAPIError): MCPServerError {
 	if (error.code === 401) {
 		return new AuthenticationError(ERROR_MESSAGES.AUTHENTICATION.INVALID_GRANT, {
 			originalError: error.message,
@@ -250,7 +251,10 @@ export async function retryOperation<T>(
 			}
 
 			// Don't retry authentication errors
-			if (error instanceof AuthenticationError || (error as any)?.code === 401) {
+			if (
+				error instanceof AuthenticationError ||
+				(error as Error & { code?: number })?.code === 401
+			) {
 				break
 			}
 
@@ -260,7 +264,7 @@ export async function retryOperation<T>(
 		}
 	}
 
-	throw lastError!
+	throw lastError
 }
 
 /**
