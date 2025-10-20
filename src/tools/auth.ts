@@ -38,8 +38,8 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 		async ({ scopes, access_type: _access_type }) => {
 			try {
 				// OAuth 2.1: Automatic authentication
-				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'http://localhost:3080'
-				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'http://localhost:8081'
+				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
 
 				// Check if auth server is running
 				try {
@@ -65,8 +65,8 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({
-							client_name: 'Google Calendar MCP Client',
-							redirect_uris: ['http://localhost:8081/callback'],
+							client_name: 'Smithery Playground Client',
+							redirect_uris: ['https://smithery.ai/playground/callback'],
 							grant_types: ['authorization_code', 'refresh_token'],
 							response_types: ['code'],
 						} as OAuth2ClientRegistration),
@@ -88,7 +88,7 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 					const authUrl = new URL(`${authServerUrl}/authorize`)
 					authUrl.searchParams.set('client_id', clientId)
 					authUrl.searchParams.set('response_type', 'code')
-					authUrl.searchParams.set('redirect_uri', 'http://localhost:8081/callback')
+					authUrl.searchParams.set('redirect_uri', 'https://smithery.ai/playground/callback')
 					authUrl.searchParams.set('scope', scopes.join(' '))
 					authUrl.searchParams.set('state', state)
 					authUrl.searchParams.set('code_challenge', codeChallenge)
@@ -134,7 +134,7 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 						body: JSON.stringify({
 							grant_type: 'authorization_code',
 							code: authCode,
-							redirect_uri: 'http://localhost:8081/callback',
+							redirect_uri: 'https://smithery.ai/playground/callback',
 							client_id: clientId,
 							code_verifier: codeVerifier,
 							resource: resourceId,
@@ -443,6 +443,7 @@ async function waitForCallback(server: CallbackServer, expectedState: string): P
 
 				if (req.url?.startsWith('/callback')) {
 					const serverAddress = server.address()
+					console.log('serverAddress', serverAddress)
 					const port =
 						serverAddress && typeof serverAddress === 'object' ? serverAddress.port : 8081
 					const url = new URL(req.url || '', `http://localhost:${port}`)

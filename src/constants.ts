@@ -17,10 +17,10 @@ export const DEFAULT_PORTS = {
 	OAUTH21_LEGACY_RESOURCE: 3002,
 } as const
 
-// OAuth 2.1 Configuration
+// OAuth 2.1 Configuration (for local development: change to http://localhost:3080)
 export const OAUTH21_CONFIG = {
-	DEFAULT_AUTH_SERVER_URL: 'http://localhost:3080',
-	DEFAULT_RESOURCE_ID: 'http://localhost:8081',
+	DEFAULT_AUTH_SERVER_URL: 'https://google-auth-server-production-990d.up.railway.app',
+	DEFAULT_RESOURCE_ID: 'https://smithery.ai',
 	DEFAULT_CALLBACK_URI: '/oauth/callback',
 	CALLBACK_SERVER_PORT: 8081,
 	CALLBACK_PATH: '/callback',
