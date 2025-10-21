@@ -7,10 +7,7 @@ import {
 	getAuthFailedPage,
 	getAuthSuccessPage,
 } from '../components/auth-pages.js'
-import type {
-	OAuth2ClientData,
-	OAuth2ClientRegistration,
-} from '../types/auth.js'
+import type { OAuth2ClientData, OAuth2ClientRegistration } from '../types/auth.js'
 
 export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Client) {
 	// OAuth 2.1: Provide automatic authentication
