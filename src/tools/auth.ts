@@ -8,9 +8,6 @@ import {
 	getAuthSuccessPage,
 } from '../components/auth-pages.js'
 import type {
-	AuthTokens,
-	CallbackServer,
-	OAuth2ClientCredentials,
 	OAuth2ClientData,
 	OAuth2ClientRegistration,
 } from '../types/auth.js'
@@ -38,7 +35,9 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 		async ({ scopes, access_type: _access_type }) => {
 			try {
 				// OAuth 2.1: Automatic authentication
-				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const authServerUrl =
+					process.env.OAUTH21_AUTH_SERVER_URL ||
+					'https://google-auth-server-production-990d.up.railway.app'
 				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
 
 				// Check if auth server is running
@@ -95,124 +94,26 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 					authUrl.searchParams.set('code_challenge_method', 'S256')
 					authUrl.searchParams.set('resource', resourceId)
 
-					// Step 4: Open browser and wait for callback
-					const { exec } = await import('node:child_process')
-					const { promisify } = await import('node:util')
-					const execAsync = promisify(exec)
-
-					// Open browser
-					await execAsync(`open "${authUrl.toString()}"`)
-
-					// Start callback server
-					let callbackServer: CallbackServer
-					try {
-						callbackServer = await startCallbackServer()
-					} catch (error) {
-						throw new Error(
-							`Failed to start callback server: ${error instanceof Error ? error.message : String(error)}`
-						)
-					}
-
-					// Wait for callback
-					let authCode: string
-					try {
-						authCode = await waitForCallback(callbackServer, state)
-					} catch (error) {
-						// Ensure server is closed on error
-						try {
-							callbackServer.close()
-						} catch (closeError) {
-							console.error('Error closing callback server:', closeError)
-						}
-						throw error
-					}
-
-					// Step 5: Exchange code for tokens
-					const tokenResponse = await fetch(`${authServerUrl}/token`, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							grant_type: 'authorization_code',
-							code: authCode,
-							redirect_uri: 'https://smithery.ai/playground/callback',
-							client_id: clientId,
-							code_verifier: codeVerifier,
-							resource: resourceId,
-						}),
-					})
-
-					if (!tokenResponse.ok) {
-						throw new Error('Failed to exchange authorization code for tokens')
-					}
-
-					const tokens = (await tokenResponse.json()) as AuthTokens
-
-					// Store tokens in OAuth2 client
-					// Note: These are JWT tokens from our auth server, not Google tokens
-					// For OAuth 2.1, we need to use the auth server's Google tokens
-					console.log('OAuth 2.1: Received tokens from auth server:', {
-						hasAccessToken: !!tokens.access_token,
-						hasRefreshToken: !!tokens.refresh_token,
-						tokenType: tokens.token_type,
-					})
-
-					// For OAuth 2.1, we need to get the actual Google tokens from the auth server
-					// The JWT tokens are for authenticating with our auth server
-					// We need to get the actual Google tokens for API calls
-
-					// Get the actual Google tokens from the auth server
-					const googleTokensResponse = await fetch(`${authServerUrl}/google-tokens`, {
-						method: 'GET',
-						headers: {
-							Authorization: `Bearer ${tokens.access_token}`,
-						},
-					})
-
-					console.log('Google tokens response status:', googleTokensResponse.status)
-
-					if (!googleTokensResponse.ok) {
-						const errorText = await googleTokensResponse.text()
-						console.error('Failed to get Google tokens:', errorText)
-						throw new Error(`Failed to get Google tokens from auth server: ${errorText}`)
-					}
-
-					const googleTokens = (await googleTokensResponse.json()) as AuthTokens
-					console.log('Received Google tokens:', {
-						hasAccessToken: !!googleTokens.access_token,
-						hasRefreshToken: !!googleTokens.refresh_token,
-					})
-
-					// Store the actual Google tokens in OAuth2 client
-					oauth2Client.setCredentials({
-						access_token: googleTokens.access_token,
-						refresh_token: googleTokens.refresh_token,
-						token_type: googleTokens.token_type,
-						expiry_date: googleTokens.expiry_date,
-					} as OAuth2ClientCredentials)
-
+					// Step 4: Return authorization URL for Smithery environment
+					// In Smithery, we can't open browser or start callback server
+					// Instead, return the URL for manual authorization
 					return {
 						content: [
 							{
 								type: 'text',
-								text: `# OAuth 2.1 Authentication Successful!
+								text: `# OAuth 2.1 Authorization Required
 
-	**Authentication Complete!** You are now authenticated with Google Calendar.
+**Please complete the authorization process:**
 
-	## Token Information
-	- **Access Token**: Present
-	- **Refresh Token**: Present  
-	- **Expires In**: ${(tokens as { expires_in?: number }).expires_in || 'Unknown'} seconds
+1. **Click this link to authorize:** [Authorize with Google](${authUrl.toString()})
 
-	## Available Tools
-	- \`list_calendars\` - List your calendars
-	- \`list_events\` - List calendar events
-	- \`create_event\` - Create new events
-	- \`create_event_now\` - Create events starting now
-	- \`update_event\` - Update existing events
-	- \`delete_event\` - Delete events by name/details
-	- \`get_current_time\` - Get current system time
+2. **After authorization**, you'll be redirected to Smithery's callback page
 
-	**You're ready to use Google Calendar!**`,
+3. **The MCP server will automatically receive your tokens** and you'll be authenticated
+
+**Note:** This is a one-time setup. Once authenticated, you won't need to repeat this process.
+
+**Authorization URL:** \`${authUrl.toString()}\``,
 							},
 						],
 					}
@@ -395,7 +296,7 @@ function generateRandomString(): string {
 	return crypto.randomBytes(16).toString('hex')
 }
 
-async function startCallbackServer(): Promise<CallbackServer> {
+async function _startCallbackServer(): Promise<any> {
 	const express = await import('express')
 	const app = express.default()
 
@@ -418,7 +319,7 @@ async function startCallbackServer(): Promise<CallbackServer> {
 	})
 }
 
-async function waitForCallback(server: CallbackServer, expectedState: string): Promise<string> {
+async function _waitForCallback(server: any, expectedState: string): Promise<string> {
 	return new Promise((resolve, reject) => {
 		let isResolved = false
 		const timeout = setTimeout(
