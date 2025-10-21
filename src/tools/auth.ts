@@ -91,26 +91,28 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 					authUrl.searchParams.set('code_challenge_method', 'S256')
 					authUrl.searchParams.set('resource', resourceId)
 
-					// Step 4: Return authorization URL for Smithery environment
-					// In Smithery, we can't open browser or start callback server
-					// Instead, return the URL for manual authorization
+					// Step 4: Return the authorization URL for Smithery
+					// Smithery will handle the OAuth callback automatically
 					return {
 						content: [
 							{
 								type: 'text',
-								text: `# OAuth 2.1 Authorization Required
+								text: `# Google Calendar Authentication
 
-**Please complete the authorization process:**
+**Click the link below to authorize access to your Google Calendar:**
 
-1. **Click this link to authorize:** [Authorize with Google](${authUrl.toString()})
+**[Authorize with Google](${authUrl.toString()})**
 
-2. **After authorization**, you'll be redirected to Smithery's callback page
+After clicking the link:
+1. You'll be redirected to Google's authorization page
+2. Sign in with your Google account
+3. Review and approve the permissions
+4. You'll be redirected back to Smithery automatically
 
-3. **The MCP server will automatically receive your tokens** and you'll be authenticated
+Once authorized, you'll be able to use all Google Calendar features!
 
-**Note:** This is a one-time setup. Once authenticated, you won't need to repeat this process.
-
-**Authorization URL:** \`${authUrl.toString()}\``,
+---
+**Direct URL:** \`${authUrl.toString()}\``,
 							},
 						],
 					}
@@ -156,9 +158,8 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 	- **Type:** ${tokens.token_type || 'Bearer'}
 
 	## Refresh Token
-	${
-		tokens.refresh_token
-			? `
+	${tokens.refresh_token
+						? `
 	**Refresh Token:** \`${tokens.refresh_token}\`
 
 	**IMPORTANT:** Save this refresh token securely! You can use it in your MCP configuration to avoid re-authorization:
@@ -169,8 +170,8 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 	}
 	\`\`\`
 	`
-			: "**WARNING:** No refresh token received. This may happen if you've previously authorized this application. To get a new refresh token, revoke access at https://myaccount.google.com/connections and re-authorize."
-	}
+						: "**WARNING:** No refresh token received. This may happen if you've previously authorized this application. To get a new refresh token, revoke access at https://myaccount.google.com/connections and re-authorize."
+					}
 
 	## Next Steps
 	- Your Google Calendar MCP server is now authenticated and ready to use
@@ -239,28 +240,25 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 	- **Token Type:** ${credentials.token_type || 'Bearer'}
 
 	## Access Token Status
-	${
-		accessTokenExpiry
-			? `- **Expires:** ${accessTokenExpiry.toISOString()}
+	${accessTokenExpiry
+						? `- **Expires:** ${accessTokenExpiry.toISOString()}
 	- **Status:** ${isExpired ? 'Expired' : 'Valid'}`
-			: '- **Expiry:** Unknown'
-	}
+						: '- **Expiry:** Unknown'
+					}
 
 	## Authentication Health
-	${
-		hasRefreshToken
-			? '**Fully Authenticated** - Can access Google Calendar indefinitely'
-			: '**Limited Authentication** - May need re-authorization when access token expires'
-	}
+	${hasRefreshToken
+						? '**Fully Authenticated** - Can access Google Calendar indefinitely'
+						: '**Limited Authentication** - May need re-authorization when access token expires'
+					}
 
-	${
-		!hasRefreshToken
-			? `
+	${!hasRefreshToken
+						? `
 	## Recommendation
 	Consider re-authorizing with \`access_type: "offline"\` to get a refresh token for permanent access.
 	`
-			: ''
-	}`
+						: ''
+					}`
 
 				return {
 					content: [{ type: 'text', text: markdown }],
