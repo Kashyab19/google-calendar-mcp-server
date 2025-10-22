@@ -7,12 +7,12 @@ import {
 	getAuthFailedPage,
 	getAuthSuccessPage,
 } from '../components/auth-pages.js'
-import type { 
+import type {
 	AuthTokens,
 	CallbackServer,
 	OAuth2ClientCredentials,
-	OAuth2ClientData, 
-	OAuth2ClientRegistration 
+	OAuth2ClientData,
+	OAuth2ClientRegistration,
 } from '../types/auth.js'
 
 export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Client) {
@@ -38,7 +38,9 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 		async ({ scopes, access_type: _access_type }) => {
 			try {
 				// OAuth 2.1: Automatic authentication
-				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const authServerUrl =
+					process.env.OAUTH21_AUTH_SERVER_URL ||
+					'https://google-auth-server-production-990d.up.railway.app'
 				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
 
 				// Check if auth server is running
@@ -106,10 +108,10 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 						let command: string
 
 						switch (platform) {
-							case "darwin": // macOS
+							case 'darwin': // macOS
 								command = `open "${authUrl.toString()}"`
 								break
-							case "win32": // Windows
+							case 'win32': // Windows
 								command = `start "" "${authUrl.toString()}"`
 								break
 							default: // Linux and others
@@ -118,7 +120,7 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 						}
 
 						await execAsync(command)
-						
+
 						// Start callback server
 						let callbackServer: CallbackServer
 						try {
@@ -214,10 +216,10 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 						}
 					} catch (browserError) {
 						// Fallback to manual flow if browser opening fails
-					return {
-						content: [
-							{
-								type: 'text',
+						return {
+							content: [
+								{
+									type: 'text',
 									text: `# Manual Authentication Required
 
 **Browser popup failed, but you can still authenticate manually:**
@@ -239,8 +241,8 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 **Direct URL:** \`${authUrl.toString()}\`
 
 **Note:** The automatic popup failed (${browserError instanceof Error ? browserError.message : String(browserError)}), but manual authentication will work perfectly!`,
-							},
-						],
+								},
+							],
 						}
 					}
 				} catch (authError: unknown) {
@@ -376,7 +378,9 @@ ${
 		},
 		async ({ scopes }) => {
 			try {
-				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const authServerUrl =
+					process.env.OAUTH21_AUTH_SERVER_URL ||
+					'https://google-auth-server-production-990d.up.railway.app'
 				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
 
 				// Register client dynamically
@@ -470,8 +474,9 @@ ${
 	- **Type:** ${tokens.token_type || 'Bearer'}
 
 	## Refresh Token
-	${tokens.refresh_token
-						? `
+	${
+		tokens.refresh_token
+			? `
 	**Refresh Token:** \`${tokens.refresh_token}\`
 
 	**IMPORTANT:** Save this refresh token securely! You can use it in your MCP configuration to avoid re-authorization:
@@ -482,8 +487,8 @@ ${
 	}
 	\`\`\`
 	`
-						: "**WARNING:** No refresh token received. This may happen if you've previously authorized this application. To get a new refresh token, revoke access at https://myaccount.google.com/connections and re-authorize."
-					}
+			: "**WARNING:** No refresh token received. This may happen if you've previously authorized this application. To get a new refresh token, revoke access at https://myaccount.google.com/connections and re-authorize."
+	}
 
 	## Next Steps
 	- Your Google Calendar MCP server is now authenticated and ready to use
@@ -515,7 +520,9 @@ ${
 		},
 		async ({ auth_code }) => {
 			try {
-				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const authServerUrl =
+					process.env.OAUTH21_AUTH_SERVER_URL ||
+					'https://google-auth-server-production-990d.up.railway.app'
 				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
 
 				// Exchange authorization code for tokens
@@ -646,25 +653,28 @@ ${
 	- **Token Type:** ${credentials.token_type || 'Bearer'}
 
 	## Access Token Status
-	${accessTokenExpiry
-						? `- **Expires:** ${accessTokenExpiry.toISOString()}
+	${
+		accessTokenExpiry
+			? `- **Expires:** ${accessTokenExpiry.toISOString()}
 	- **Status:** ${isExpired ? 'Expired' : 'Valid'}`
-						: '- **Expiry:** Unknown'
-					}
+			: '- **Expiry:** Unknown'
+	}
 
 	## Authentication Health
-	${hasRefreshToken
-						? '**Fully Authenticated** - Can access Google Calendar indefinitely'
-						: '**Limited Authentication** - May need re-authorization when access token expires'
-					}
+	${
+		hasRefreshToken
+			? '**Fully Authenticated** - Can access Google Calendar indefinitely'
+			: '**Limited Authentication** - May need re-authorization when access token expires'
+	}
 
-	${!hasRefreshToken
-						? `
+	${
+		!hasRefreshToken
+			? `
 	## Recommendation
 	Consider re-authorizing with \`access_type: "offline"\` to get a refresh token for permanent access.
 	`
-						: ''
-					}`
+			: ''
+	}`
 
 				return {
 					content: [{ type: 'text', text: markdown }],
