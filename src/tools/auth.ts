@@ -7,13 +7,19 @@ import {
 	getAuthFailedPage,
 	getAuthSuccessPage,
 } from '../components/auth-pages.js'
-import type { OAuth2ClientData, OAuth2ClientRegistration } from '../types/auth.js'
+import type { 
+	AuthTokens,
+	CallbackServer,
+	OAuth2ClientCredentials,
+	OAuth2ClientData, 
+	OAuth2ClientRegistration 
+} from '../types/auth.js'
 
 export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Client) {
-	// OAuth 2.1: Provide automatic authentication
+	// OAuth 2.1: Automatic authentication with popup support
 	server.tool(
 		'authenticate',
-		'Automatically authenticate with Google Calendar using Single Sign-On',
+		'Automatically authenticate with Google Calendar using OAuth 2.1 with popup support',
 		{
 			scopes: z
 				.array(z.string())
@@ -32,9 +38,7 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 		async ({ scopes, access_type: _access_type }) => {
 			try {
 				// OAuth 2.1: Automatic authentication
-				const authServerUrl =
-					process.env.OAUTH21_AUTH_SERVER_URL ||
-					'https://google-auth-server-production-990d.up.railway.app'
+				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
 				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
 
 				// Check if auth server is running
@@ -91,30 +95,153 @@ export function registerAuthTools(server: McpServer, oauth2Client: Auth.OAuth2Cl
 					authUrl.searchParams.set('code_challenge_method', 'S256')
 					authUrl.searchParams.set('resource', resourceId)
 
-					// Step 4: Return the authorization URL for Smithery
-					// Smithery will handle the OAuth callback automatically
+					// Step 4: Try to open browser with popup support
+					try {
+						const { exec } = await import('node:child_process')
+						const { promisify } = await import('node:util')
+						const execAsync = promisify(exec)
+
+						// Use Smithery's browser opening logic
+						const platform = process.platform
+						let command: string
+
+						switch (platform) {
+							case "darwin": // macOS
+								command = `open "${authUrl.toString()}"`
+								break
+							case "win32": // Windows
+								command = `start "" "${authUrl.toString()}"`
+								break
+							default: // Linux and others
+								command = `xdg-open "${authUrl.toString()}"`
+								break
+						}
+
+						await execAsync(command)
+						
+						// Start callback server
+						let callbackServer: CallbackServer
+						try {
+							callbackServer = await _startCallbackServer()
+						} catch (error) {
+							throw new Error(
+								`Failed to start callback server: ${error instanceof Error ? error.message : String(error)}`
+							)
+						}
+
+						// Wait for callback
+						let authCode: string
+						try {
+							authCode = await _waitForCallback(callbackServer, state)
+						} catch (error) {
+							// Ensure server is closed on error
+							try {
+								callbackServer.close()
+							} catch (closeError) {
+								console.error('Error closing callback server:', closeError)
+							}
+							throw error
+						}
+
+						// Step 5: Exchange code for tokens
+						const tokenResponse = await fetch(`${authServerUrl}/token`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								grant_type: 'authorization_code',
+								code: authCode,
+								redirect_uri: 'https://smithery.ai/playground/callback',
+								client_id: clientId,
+								code_verifier: codeVerifier,
+								resource: resourceId,
+							}),
+						})
+
+						if (!tokenResponse.ok) {
+							throw new Error('Failed to exchange authorization code for tokens')
+						}
+
+						const tokens = (await tokenResponse.json()) as AuthTokens
+
+						// Get the actual Google tokens from the auth server
+						const googleTokensResponse = await fetch(`${authServerUrl}/google-tokens`, {
+							method: 'GET',
+							headers: {
+								Authorization: `Bearer ${tokens.access_token}`,
+							},
+						})
+
+						if (!googleTokensResponse.ok) {
+							const errorText = await googleTokensResponse.text()
+							throw new Error(`Failed to get Google tokens: ${errorText}`)
+						}
+
+						const googleTokens = (await googleTokensResponse.json()) as AuthTokens
+
+						// Store the actual Google tokens in OAuth2 client
+						oauth2Client.setCredentials({
+							access_token: googleTokens.access_token,
+							refresh_token: googleTokens.refresh_token,
+							token_type: googleTokens.token_type,
+							expiry_date: googleTokens.expiry_date,
+						} as OAuth2ClientCredentials)
+
+						return {
+							content: [
+								{
+									type: 'text',
+									text: `# OAuth 2.1 Authentication Successful!
+
+**Authentication Complete!** You are now authenticated with Google Calendar.
+
+## Token Information
+- **Access Token**: Present
+- **Refresh Token**: Present  
+- **Expires In**: ${(tokens as { expires_in?: number }).expires_in || 'Unknown'} seconds
+
+## Available Tools
+- \`list_calendars\` - List your calendars
+- \`list_events\` - List calendar events
+- \`create_event\` - Create new events
+- \`create_event_now\` - Create events starting now
+- \`update_event\` - Update existing events
+- \`delete_event\` - Delete events by name/details
+- \`get_current_time\` - Get current system time
+
+**You're ready to use Google Calendar!**`,
+								},
+							],
+						}
+					} catch (browserError) {
+						// Fallback to manual flow if browser opening fails
 					return {
 						content: [
 							{
 								type: 'text',
-								text: `# Google Calendar Authentication
+									text: `# Manual Authentication Required
 
-**Click the link below to authorize access to your Google Calendar:**
+**Browser popup failed, but you can still authenticate manually:**
+
+**Step 1: Click the link below to authorize access to your Google Calendar:**
 
 **[Authorize with Google](${authUrl.toString()})**
 
-After clicking the link:
-1. You'll be redirected to Google's authorization page
+**Step 2: After authorization, you'll be redirected to a callback page. Copy the authorization code from the URL and use the \`complete_authentication\` tool with that code.**
+
+## What happens next:
+1. Click the authorization link above
 2. Sign in with your Google account
 3. Review and approve the permissions
-4. You'll be redirected back to Smithery automatically
-
-Once authorized, you'll be able to use all Google Calendar features!
+4. You'll be redirected to a callback page with an authorization code
+5. Copy the code from the URL and use \`complete_authentication\` tool
 
 ---
-**Direct URL:** \`${authUrl.toString()}\``,
+**Direct URL:** \`${authUrl.toString()}\`
+
+**Note:** The automatic popup failed (${browserError instanceof Error ? browserError.message : String(browserError)}), but manual authentication will work perfectly!`,
 							},
 						],
+						}
 					}
 				} catch (authError: unknown) {
 					return {
@@ -132,6 +259,191 @@ Once authorized, you'll be able to use all Google Calendar features!
 						{
 							type: 'text',
 							text: `Error in OAuth 2.1 flow: ${e instanceof Error ? e.message : String(e)}`,
+						},
+					],
+				}
+			}
+		}
+	)
+
+	// Simple authentication check - Smithery handles OAuth automatically!
+	server.tool(
+		'check_authentication',
+		'Check if you are already authenticated with Google Calendar via Smithery',
+		{},
+		async () => {
+			try {
+				const credentials = oauth2Client.credentials
+
+				if (!credentials.access_token && !credentials.refresh_token) {
+					return {
+						content: [
+							{
+								type: 'text',
+								text: `# Authentication Required
+
+**You need to authenticate with Google Calendar first.**
+
+## How to authenticate:
+
+### Option 1: Use Smithery's Built-in OAuth (Recommended)
+1. **Go to your Smithery settings**
+2. **Connect your Google account** 
+3. **Grant calendar permissions**
+4. **Return here** - authentication will be automatic!
+
+### Option 2: Manual Authentication
+If Smithery OAuth isn't available, use the manual flow:
+1. Use \`start_manual_auth\` to get an authorization URL
+2. Complete the OAuth flow manually
+3. Use \`complete_authentication\` with the authorization code
+
+## Current Status
+- **Access Token**: Not available
+- **Refresh Token**: Not available
+- **Status**: Not authenticated
+
+**Try the Smithery OAuth first - it's much easier!**`,
+							},
+						],
+					}
+				}
+
+				const hasRefreshToken = !!credentials.refresh_token
+				const accessTokenExpiry = credentials.expiry_date ? new Date(credentials.expiry_date) : null
+				const isExpired = accessTokenExpiry ? accessTokenExpiry < new Date() : false
+
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `# Already Authenticated!
+
+**Great! You're already authenticated with Google Calendar.**
+
+## Authentication Status
+- **Access Token**: ${credentials.access_token ? 'Present' : 'Missing'}
+- **Refresh Token**: ${hasRefreshToken ? 'Present' : 'Missing'}
+- **Token Type**: ${credentials.token_type || 'Bearer'}
+
+## Token Health
+${
+	accessTokenExpiry
+		? `- **Expires**: ${accessTokenExpiry.toISOString()}
+- **Status**: ${isExpired ? 'Expired' : 'Valid'}`
+		: '- **Expiry**: Unknown'
+}
+
+## Available Tools
+- \`list_calendars\` - List your calendars
+- \`list_events\` - List calendar events  
+- \`create_event\` - Create new events
+- \`create_event_now\` - Create events starting now
+- \`update_event\` - Update existing events
+- \`delete_event\` - Delete events by name/details
+- \`get_current_time\` - Get current system time
+
+**You're ready to use Google Calendar!**`,
+						},
+					],
+				}
+			} catch (e: unknown) {
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `Error checking authentication: ${e instanceof Error ? e.message : String(e)}`,
+						},
+					],
+				}
+			}
+		}
+	)
+
+	// Tool: Start Manual Authentication (Fallback)
+	server.tool(
+		'start_manual_auth',
+		'Start manual OAuth authentication if Smithery OAuth is not available',
+		{
+			scopes: z
+				.array(z.string())
+				.optional()
+				.default([
+					'https://www.googleapis.com/auth/calendar',
+					'https://www.googleapis.com/auth/calendar.events',
+				])
+				.describe('OAuth2 scopes to request (default: full calendar access)'),
+		},
+		async ({ scopes }) => {
+			try {
+				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
+
+				// Register client dynamically
+				const clientRegistrationResponse = await fetch(`${authServerUrl}/register`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						client_name: 'Smithery Manual Auth Client',
+						redirect_uris: ['https://smithery.ai/playground/callback'],
+						grant_types: ['authorization_code', 'refresh_token'],
+						response_types: ['code'],
+					} as OAuth2ClientRegistration),
+				})
+
+				if (!clientRegistrationResponse.ok) {
+					throw new Error('Failed to register OAuth client')
+				}
+
+				const clientData = (await clientRegistrationResponse.json()) as OAuth2ClientData
+				const clientId = clientData.client_id
+
+				// Generate PKCE parameters
+				const codeVerifier = generateCodeVerifier()
+				const codeChallenge = await generateCodeChallenge(codeVerifier)
+				const state = generateRandomString()
+
+				// Build authorization URL
+				const authUrl = new URL(`${authServerUrl}/authorize`)
+				authUrl.searchParams.set('client_id', clientId)
+				authUrl.searchParams.set('response_type', 'code')
+				authUrl.searchParams.set('redirect_uri', 'https://smithery.ai/playground/callback')
+				authUrl.searchParams.set('scope', scopes.join(' '))
+				authUrl.searchParams.set('state', state)
+				authUrl.searchParams.set('code_challenge', codeChallenge)
+				authUrl.searchParams.set('code_challenge_method', 'S256')
+				authUrl.searchParams.set('resource', resourceId)
+
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `# Manual Authentication
+
+**Step 1: Click the link below to authorize access to your Google Calendar:**
+
+**[Authorize with Google](${authUrl.toString()})**
+
+**Step 2: After authorization, you'll be redirected to a callback page. Copy the authorization code from the URL and use the \`complete_authentication\` tool with that code.**
+
+## What happens next:
+1. Click the authorization link above
+2. Sign in with your Google account  
+3. Review and approve the permissions
+4. You'll be redirected to a callback page with an authorization code
+5. Copy the code from the URL and use \`complete_authentication\` tool
+
+---
+**Direct URL:** \`${authUrl.toString()}\``,
+						},
+					],
+				}
+			} catch (error: unknown) {
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `Manual authentication setup failed: ${error instanceof Error ? error.message : String(error)}`,
 						},
 					],
 				}
@@ -187,6 +499,100 @@ Once authorized, you'll be able to use all Google Calendar features!
 						{
 							type: 'text',
 							text: `Error exchanging authorization code: ${e instanceof Error ? e.message : String(e)}`,
+						},
+					],
+				}
+			}
+		}
+	)
+
+	// Tool: Complete Authentication
+	server.tool(
+		'complete_authentication',
+		'Complete OAuth 2.1 authentication using authorization code from callback',
+		{
+			auth_code: z.string().describe('Authorization code received from OAuth callback URL'),
+		},
+		async ({ auth_code }) => {
+			try {
+				const authServerUrl = process.env.OAUTH21_AUTH_SERVER_URL || 'https://google-auth-server-production-990d.up.railway.app'
+				const resourceId = process.env.OAUTH21_RESOURCE_ID || 'https://smithery.ai'
+
+				// Exchange authorization code for tokens
+				const tokenResponse = await fetch(`${authServerUrl}/token`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						grant_type: 'authorization_code',
+						code: auth_code,
+						redirect_uri: 'https://smithery.ai/playground/callback',
+						client_id: 'smithery-mcp-client', // Use a default client ID
+						resource: resourceId,
+					}),
+				})
+
+				if (!tokenResponse.ok) {
+					const errorText = await tokenResponse.text()
+					throw new Error(`Failed to exchange authorization code: ${errorText}`)
+				}
+
+				const tokens = (await tokenResponse.json()) as AuthTokens
+
+				// Get the actual Google tokens from the auth server
+				const googleTokensResponse = await fetch(`${authServerUrl}/google-tokens`, {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${tokens.access_token}`,
+					},
+				})
+
+				if (!googleTokensResponse.ok) {
+					const errorText = await googleTokensResponse.text()
+					throw new Error(`Failed to get Google tokens: ${errorText}`)
+				}
+
+				const googleTokens = (await googleTokensResponse.json()) as AuthTokens
+
+				// Store the actual Google tokens in OAuth2 client
+				oauth2Client.setCredentials({
+					access_token: googleTokens.access_token,
+					refresh_token: googleTokens.refresh_token,
+					token_type: googleTokens.token_type,
+					expiry_date: googleTokens.expiry_date,
+				} as OAuth2ClientCredentials)
+
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `# OAuth 2.1 Authentication Successful!
+
+**Authentication Complete!** You are now authenticated with Google Calendar.
+
+## Token Information
+- **Access Token**: Present
+- **Refresh Token**: Present  
+- **Expires In**: ${(tokens as { expires_in?: number }).expires_in || 'Unknown'} seconds
+
+## Available Tools
+- \`list_calendars\` - List your calendars
+- \`list_events\` - List calendar events
+- \`create_event\` - Create new events
+- \`create_event_now\` - Create events starting now
+- \`update_event\` - Update existing events
+- \`delete_event\` - Delete events by name/details
+- \`get_current_time\` - Get current system time
+
+**You're ready to use Google Calendar!**`,
+						},
+					],
+				}
+			} catch (error: unknown) {
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `Authentication failed: ${error instanceof Error ? error.message : String(error)}`,
 						},
 					],
 				}
